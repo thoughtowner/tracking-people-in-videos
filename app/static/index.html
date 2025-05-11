@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>People Tracker</title>
+</head>
+<body>
+    <h1>Upload Video</h1>
+    <form id="upload-form">
+        <input type="file" name="video" id="video" accept="video/mp4" required />
+        <button type="submit">Upload and process</button>
+    </form>
+
+    <div id="result" style="margin-top: 20px;"></div>
+
+    <script>
+        const form = document.getElementById("upload-form");
+        const result = document.getElementById("result");
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById("video");
+
+            if (!fileInput.files.length) {
+                result.textContent = "Please select a video file first.";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("video", fileInput.files[0]);
+
+            result.innerHTML = "Processing...";
+
+            try {
+                const response = await fetch("/track", {
+                    method: "POST",
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server error: ${response.status}\n${errorText}`);
+                }
+
+                const data = await response.json();
+
+                result.innerHTML = `
+                    <p><strong>Processing complete!</strong></p>
+                    <p><a href="${data.video_url}" target="_blank">Download processed video</a></p>
+                    <p><a href="${data.detections_url}" target="_blank">View detections (JSON)</a></p>
+                `;
+            } catch (err) {
+                result.innerHTML = `<p style="color: red;">Processing failed: ${err.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

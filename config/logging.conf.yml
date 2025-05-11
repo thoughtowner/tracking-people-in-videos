@@ -1,0 +1,20 @@
+version: 1
+disable_existing_loggers: yes
+formatters:
+  console_formatter_backend:
+    (): app.logger.ConsoleFormatter
+handlers:
+  console_handler_backend:
+    class: logging.StreamHandler
+    formatter: console_formatter_backend
+root:
+  level: INFO
+  handlers: [console_handler_backend]
+loggers:
+  'backend_logger':
+    level: INFO
+    propagate: yes
+    handlers: [console_handler_backend]
+  # 'uvicorn':
+    # level: INFO
+    # propagate: no
