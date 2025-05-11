@@ -107,13 +107,6 @@
         status.textContent = "Видео загружено и обработано.";
 
         showModeButtons();
-
-        document.getElementById("downloadText").style.display = "block";
-        document.getElementById("downloadLink").style.display = "block";
-        document.getElementById("downloadLink").href = `/video?video_id=${videoId}`;
-        document.getElementById("detectionsText").style.display = "block";
-        document.getElementById("detectionsLink").style.display = "block";
-        document.getElementById("detectionsLink").href = `/detections?video_id=${videoId}`;
       } catch (err) {
         status.textContent = "Ошибка загрузки или обработки: " + err.message;
       }
@@ -132,12 +125,12 @@
 
       let lastOriginalTime = 0;
       let lastProcessedTime = 0;
-      let frameInterval = 0;  // Интервал времени между кадрами
+      let frameInterval = 0;
 
       originalVideo.addEventListener("play", () => {
         requestAnimationFrame(function drawOriginal() {
           if (!originalVideo.paused && !originalVideo.ended) {
-            const currentTime = originalVideo.currentTime * 1000;  // Текущее время оригинального видео в миллисекундах
+            const currentTime = originalVideo.currentTime * 1000;
 
             if (currentTime - lastOriginalTime >= frameInterval) {
               originalCtx.drawImage(originalVideo, 0, 0, originalCanvas.width, originalCanvas.height);
@@ -152,16 +145,16 @@
       ws = new WebSocket(`ws://${window.location.host}/ws/${videoId}`);
       ws.binaryType = "blob";
 
+      let firstFrameProcessed = false;
+
       ws.onmessage = (event) => {
-        console.log("Получен кадр от сервера.");
         const blob = event.data;
         const img = new Image();
         img.onload = () => {
           const currentProcessedTime = Date.now();
 
-          // Синхронизация с оригинальным видео
           const delay = currentProcessedTime - lastProcessedTime;
-          const expectedDelay = (frameInterval) - delay;
+          const expectedDelay = frameInterval - delay;
 
           if (expectedDelay > 0) {
             setTimeout(() => {
@@ -169,22 +162,31 @@
               processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
               lastProcessedTime = Date.now();
               URL.revokeObjectURL(img.src);
+
+              // Запуск оригинального видео только после первого кадра обработанного видео
+              if (!firstFrameProcessed) {
+                originalVideo.play();
+                firstFrameProcessed = true;
+              }
             }, expectedDelay);
           } else {
-            // Если задержка меньше, чем ожидаемая, просто показываем кадр
             processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
             processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
             lastProcessedTime = Date.now();
             URL.revokeObjectURL(img.src);
+
+            // Запуск оригинального видео только после первого кадра обработанного видео
+            if (!firstFrameProcessed) {
+              originalVideo.play();
+              firstFrameProcessed = true;
+            }
           }
         };
         img.src = URL.createObjectURL(blob);
       };
 
       ws.onopen = () => {
-        console.log("WebSocket соединение открыто.");
         ws.send("start");
-        originalVideo.play();
       };
 
       ws.onerror = (error) => {
@@ -198,20 +200,20 @@
     }
 
     document.getElementById("sync_play_button").addEventListener("click", function() {
-        fetch("/toggle_playing_mode", {
-            method: "POST",
-            body: JSON.stringify({ client_id: videoId, mode: "sync" }),
-            headers: { "Content-Type": "application/json" }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === "success") {
-                console.log("Режим воспроизведения изменен");
-            } else {
-                console.error("Ошибка изменения режима воспроизведения");
-            }
-        })
-        .catch(error => console.error("Ошибка сети:", error));
+      fetch("/toggle_playing_mode", {
+        method: "POST",
+        body: JSON.stringify({ client_id: videoId, mode: "sync" }),
+        headers: { "Content-Type": "application/json" }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === "success") {
+          console.log("Режим воспроизведения изменен");
+        } else {
+          console.error("Ошибка изменения режима воспроизведения");
+        }
+      })
+      .catch(error => console.error("Ошибка сети:", error));
     });
   </script>
 

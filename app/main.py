@@ -15,7 +15,6 @@ from .people_tracker import process_video, process_video_live
 import logging.config
 from .logger import LOGGING_CONFIG, logger
 
-
 logging.config.dictConfig(LOGGING_CONFIG)
 logger.info("Запуск приложения")
 
@@ -62,6 +61,10 @@ async def track_people(video: UploadFile = File(...)):
         "fps": 30,
         "playing_synchronized": True
     }
+
+    process_video(input_filename, output_filename)
+    dummy_detections = process_video(input_filename, output_filename)
+    tracking_data_store[video_id] = dummy_detections
 
     return {
         "video_id": video_id,

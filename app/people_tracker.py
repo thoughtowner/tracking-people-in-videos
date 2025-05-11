@@ -21,32 +21,14 @@ def process_video(input_path, output_path):
     return dummy_detections
 
 
-# def process_video_live(input_path, buffer, stop_event, fps):
-#     cap = cv2.VideoCapture(input_path)
-#     frame_idx = 1
-#
-#     while cap.isOpened() and not stop_event.is_set():
-#         ret, frame = cap.read()
-#         if not ret:
-#             break
-#
-#         # delay = random.uniform(0.1, 0.5)
-#         # time.sleep(delay)
-#
-#         timestamp = frame_idx / fps
-#         buffer.append((frame_idx, timestamp, frame.copy()))
-#         logging.info(f"Кадр {frame_idx} добавлен в буфер")  # Логирование кадров в буфер
-#         frame_idx += 1
-#
-#     cap.release()
-#     logging.info("Обработка видео завершена")
-
-
 async def process_video_live(input_path, websocket, fps, client_id):
     from .main import clients
     cap = cv2.VideoCapture(input_path)
     frame_idx = 1
     client = clients[client_id]
+
+    last_frame_time = time.time()
+    frame_interval = 1 / fps
 
     while cap.isOpened():
         if not client["playing_synchronized"]:
@@ -57,28 +39,35 @@ async def process_video_live(input_path, websocket, fps, client_id):
         if not ret:
             break
 
-        delay = random.uniform(0.1, 0.5)
-        time.sleep(delay)
+        delay = random.uniform(1, 2)
+        await asyncio.sleep(delay)
 
-        # Получаем текущее время кадра
-        timestamp = frame_idx / fps
+        current_time = time.time()
+        elapsed_time = current_time - last_frame_time
 
-        # Кодируем кадр в формат JPEG
-        _, jpeg = cv2.imencode(".jpg", frame)
-        if not _:
-            logger.info("Ошибка кодирования кадра!")
-            continue
+        if elapsed_time < frame_interval:
+            await asyncio.sleep(frame_interval - elapsed_time)
+        else:
+            skipped_frames = int((elapsed_time - frame_interval) / frame_interval)
+            for _ in range(skipped_frames):
+                ret, _ = cap.read()
+                if not ret:
+                    break
 
-        # Отправляем кадр через WebSocket
-        try:
-            await websocket.send_bytes(jpeg.tobytes())
-        except Exception as e:
-            logger.info(f"Ошибка отправки кадра: {e}")
-            break
+            _, jpeg = cv2.imencode(".jpg", frame)
+            if not _:
+                logger.info("Ошибка кодирования кадра!")
+                continue
+
+            try:
+                await websocket.send_bytes(jpeg.tobytes())
+            except Exception as e:
+                logger.info(f"Ошибка отправки кадра: {e}")
+                break
+
+            last_frame_time = time.time()
 
         frame_idx += 1
-        # Задержка для синхронизации с оригинальным видео
-        await asyncio.sleep(1 / fps)  # Задержка на время одного кадра для поддержания fps
 
     cap.release()
     logger.info("Обработка видео завершена.")
