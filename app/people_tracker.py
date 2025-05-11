@@ -41,17 +41,24 @@ def process_video(input_path, output_path):
 #     cap.release()
 #     logging.info("Обработка видео завершена")
 
-async def process_video_live(input_path, websocket, fps):
+async def process_video_live(input_path, websocket, fps, client_id):
+    from .main import clients
+
     cap = cv2.VideoCapture(input_path)
     frame_idx = 1
+    client = clients[client_id]
 
     while cap.isOpened():
+        if not client["playing_synchronized"]:
+            logger.info(f"Остановка воспроизведения для клиента {client_id}")
+            break
+
         ret, frame = cap.read()
         if not ret:
             break
 
-        delay = random.uniform(0.1, 0.5)
-        await asyncio.sleep(delay)
+        # delay = random.uniform(0.1, 0.5)
+        # await asyncio.sleep(delay)
 
         _, jpeg = cv2.imencode(".jpg", frame)
         if not _:

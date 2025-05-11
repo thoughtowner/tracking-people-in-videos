@@ -26,6 +26,8 @@
   <button onclick="selectMode('sync')" id="syncButton" style="display:none;">Синхронное воспроизведение</button>
   <button onclick="selectMode('download')" id="downloadButton" style="display:none;">Только получить видео</button>
 
+  <button id="sync_play_button" class="hidden">Переключить режим воспроизведения</button>
+
   <div id="syncMode" style="display:none;">
     <h2>Синхронное воспроизведение</h2>
     <div class="row">
@@ -52,7 +54,7 @@
     let mode = null;
     let ws = null;
     let videoId = null;
-    let uploadedVideo = null;  // Для хранения загруженного видео
+    let uploadedVideo = null;
 
     function showModeButtons() {
       document.getElementById("modeText").style.display = "block";
@@ -167,6 +169,24 @@
         console.log("WebSocket закрыт.");
       };
     }
+
+    document.getElementById("sync_play_button").addEventListener("click", function() {
+        fetch("/toggle_playing_mode", {
+            method: "POST",
+            body: JSON.stringify({ client_id: videoId, mode: "sync" }),
+            headers: { "Content-Type": "application/json" }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "success") {
+                console.log("Режим воспроизведения изменен");
+            } else {
+                console.error("Ошибка изменения режима воспроизведения");
+            }
+        })
+        .catch(error => console.error("Ошибка сети:", error));
+    });
   </script>
+
 </body>
 </html>
