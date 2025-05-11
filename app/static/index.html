@@ -1,57 +1,172 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <title>People Tracker</title>
+  <meta charset="UTF-8">
+  <title>Видео обработка</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    button, input[type="file"] { margin: 10px 0; }
+    #controls, #syncMode, #downloadMode { margin-top: 20px; }
+    canvas { border: 1px solid black; margin: 10px; }
+    .row { display: flex; justify-content: center; gap: 20px; }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
-    <h1>Upload Video</h1>
-    <form id="upload-form">
-        <input type="file" name="video" id="video" accept="video/mp4" required />
-        <button type="submit">Upload and process</button>
-    </form>
 
-    <div id="result" style="margin-top: 20px;"></div>
+  <h1>Обработка видео</h1>
 
-    <script>
-        const form = document.getElementById("upload-form");
-        const result = document.getElementById("result");
+  <div id="controls">
+    <input type="file" id="fileInput" accept="video/mp4">
+    <button onclick="uploadVideo()">Загрузить видео</button>
+    <div id="status" style="color: darkred;"></div>
+  </div>
 
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const fileInput = document.getElementById("video");
+  <p id="modeText" style="display:none;">Выберите режим:</p>
+  <button onclick="selectMode('sync')" id="syncButton" style="display:none;">Синхронное воспроизведение</button>
+  <button onclick="selectMode('download')" id="downloadButton" style="display:none;">Только получить видео</button>
 
-            if (!fileInput.files.length) {
-                result.textContent = "Please select a video file first.";
-                return;
-            }
+  <div id="syncMode" style="display:none;">
+    <h2>Синхронное воспроизведение</h2>
+    <div class="row">
+      <div>
+        <p>Оригинальное видео</p>
+        <video id="originalVideo" style="display:none;" width="640" height="480"></video>
+        <canvas id="originalCanvas" width="640" height="480"></canvas>
+      </div>
+      <div>
+        <p>Обработанное видео</p>
+        <canvas id="processedCanvas" width="640" height="480"></canvas>
+      </div>
+    </div>
+  </div>
 
-            const formData = new FormData();
-            formData.append("video", fileInput.files[0]);
+  <div id="downloadMode" style="display:none;">
+    <p id="downloadText" style="display:none;">Ссылка для скачивания появится после обработки видео:</p>
+    <a id="downloadLink" href="#" download="processed_video.mp4" style="display:none;">Скачать обработанное видео</a>
+    <p id="detectionsText" style="display:none;">Ссылка на результаты (JSON):</p>
+    <a id="detectionsLink" href="#" target="_blank" style="display:none;">Смотреть координаты обнаруженных объектов</a>
+  </div>
 
-            result.innerHTML = "Processing...";
+  <script>
+    let mode = null;
+    let ws = null;
+    let videoId = null;
+    let uploadedVideo = null;  // Для хранения загруженного видео
 
-            try {
-                const response = await fetch("/track", {
-                    method: "POST",
-                    body: formData
-                });
+    function showModeButtons() {
+      document.getElementById("modeText").style.display = "block";
+      document.getElementById("syncButton").style.display = "inline-block";
+      document.getElementById("downloadButton").style.display = "inline-block";
+    }
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error: ${response.status}\n${errorText}`);
-                }
+    function selectMode(selected) {
+      mode = selected;
+      document.getElementById("syncMode").style.display = selected === "sync" ? "block" : "none";
+      document.getElementById("downloadMode").style.display = selected === "download" ? "block" : "none";
 
-                const data = await response.json();
+      if (uploadedVideo) {
+        if (selected === "download") {
+          document.getElementById("downloadText").style.display = "block";
+          document.getElementById("downloadLink").style.display = "block";
+          document.getElementById("downloadLink").href = `/video?video_id=${videoId}`;
+          document.getElementById("detectionsText").style.display = "block";
+          document.getElementById("detectionsLink").style.display = "block";
+          document.getElementById("detectionsLink").href = `/detections?video_id=${videoId}`;
+        } else if (selected === "sync") {
+          playSync(uploadedVideo, videoId);
+        }
+      }
+    }
 
-                result.innerHTML = `
-                    <p><strong>Processing complete!</strong></p>
-                    <p><a href="${data.video_url}" target="_blank">Download processed video</a></p>
-                    <p><a href="${data.detections_url}" target="_blank">View detections (JSON)</a></p>
-                `;
-            } catch (err) {
-                result.innerHTML = `<p style="color: red;">Processing failed: ${err.message}</p>`;
-            }
+    async function uploadVideo() {
+      const fileInput = document.getElementById("fileInput");
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("Выберите видеофайл.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("video", file);
+
+      const status = document.getElementById("status");
+      status.textContent = "Загрузка и обработка...";
+
+      try {
+        const response = await fetch("/track", {
+          method: "POST",
+          body: formData
         });
-    </script>
+        const data = await response.json();
+        videoId = data.video_id;
+        uploadedVideo = file;
+
+        status.textContent = "Видео загружено и обработано.";
+
+        showModeButtons();
+
+        document.getElementById("downloadText").style.display = "block";
+        document.getElementById("downloadLink").style.display = "block";
+        document.getElementById("downloadLink").href = `/video?video_id=${videoId}`;
+        document.getElementById("detectionsText").style.display = "block";
+        document.getElementById("detectionsLink").style.display = "block";
+        document.getElementById("detectionsLink").href = `/detections?video_id=${videoId}`;
+      } catch (err) {
+        status.textContent = "Ошибка загрузки или обработки: " + err.message;
+      }
+    }
+
+    function playSync(file, videoId) {
+      const originalVideo = document.getElementById("originalVideo");
+      const originalCanvas = document.getElementById("originalCanvas");
+      const processedCanvas = document.getElementById("processedCanvas");
+      const originalCtx = originalCanvas.getContext("2d");
+      const processedCtx = processedCanvas.getContext("2d");
+
+      const objectUrl = URL.createObjectURL(file);
+      originalVideo.src = objectUrl;
+      originalVideo.load();
+
+      originalVideo.addEventListener("play", () => {
+        requestAnimationFrame(function drawOriginal() {
+          if (!originalVideo.paused && !originalVideo.ended) {
+            originalCtx.drawImage(originalVideo, 0, 0, originalCanvas.width, originalCanvas.height);
+            requestAnimationFrame(drawOriginal);
+          }
+        });
+      });
+
+      ws = new WebSocket(`ws://${window.location.host}/ws/${videoId}`);
+      ws.binaryType = "blob";
+
+      ws.onmessage = (event) => {
+        console.log("Получен кадр от сервера.");
+        const blob = event.data;
+        const img = new Image();
+        img.onload = () => {
+          processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+          processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
+          URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(blob);
+      };
+
+      ws.onopen = () => {
+        console.log("WebSocket соединение открыто.");
+        ws.send("start");
+        originalVideo.play();
+      };
+
+      ws.onerror = (error) => {
+        console.error("Ошибка WebSocket: ", error);
+        document.getElementById("status").textContent = "Ошибка WebSocket-соединения.";
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket закрыт.");
+      };
+    }
+  </script>
 </body>
 </html>

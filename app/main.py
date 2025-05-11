@@ -1,22 +1,35 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+import cv2
+import time
+import threading
 import shutil
 import uuid
 import os
-from .people_tracker import process_video
+import asyncio
+from .people_tracker import process_video, process_video_live
+
+import logging.config
+from .logger import LOGGING_CONFIG, logger
+
+
+logging.config.dictConfig(LOGGING_CONFIG)
+logger.info("Запуск приложения")
 
 app = FastAPI()
 
-# Смонтировать статику на /static, а не на /
+clients = {}
+tracking_data_store = {}
+
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 def root():
     with open("app/static/index.html") as f:
         return f.read()
-
-tracking_data_store = {}
 
 @app.post("/track")
 async def track_people(video: UploadFile = File(...)):
@@ -28,10 +41,13 @@ async def track_people(video: UploadFile = File(...)):
     with open(input_filename, "wb") as f:
         shutil.copyfileobj(video.file, f)
 
-    detections = process_video(input_filename, output_filename)
-
     video_id = os.path.basename(output_filename).replace("output_", "").replace(".mp4", "")
-    tracking_data_store[video_id] = detections
+    tracking_data_store[video_id] = []
+
+    clients[video_id] = {
+        "input_path": input_filename,
+        "fps": 30
+    }
 
     return {
         "video_id": video_id,
@@ -51,3 +67,36 @@ def get_detections(video_id: str):
     if video_id not in tracking_data_store:
         return JSONResponse(status_code=404, content={"detail": "Detections not found"})
     return tracking_data_store[video_id]
+
+async def main_process_video(input_path: str, client_id: str, websocket: WebSocket, fps=30):
+    buffer = []
+    stop_event = threading.Event()
+
+    clients[client_id] = {
+        "buffer": buffer,
+        "stop_event": stop_event,
+        "start_time": time.time(),
+        "fps": fps,
+        "input_path": input_path,
+        "websocket": websocket
+    }
+
+    logger.info("Запуск обработки видео")
+    await process_video_live(input_path, websocket, fps)
+    logger.info("Процесс обработки видео завершен")
+
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await websocket.accept()
+
+    client = clients.get(client_id)
+    if not client:
+        await websocket.close()
+        return
+
+    input_path = client["input_path"]
+    fps = client["fps"]
+
+    await main_process_video(input_path, client_id, websocket, fps)
+    await websocket.close()
+    logger.info("WebSocket закрыт.")

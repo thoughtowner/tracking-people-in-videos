@@ -1,5 +1,7 @@
 fastapi==0.115.12
-uvicorn==0.34.2
+uvicorn[standard]
 pyyaml==6.0.2
 starlette-context==0.4.0
 python-multipart==0.0.20
+opencv-python==4.11.0.86
+asyncio
