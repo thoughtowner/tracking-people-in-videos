@@ -130,10 +130,20 @@
       originalVideo.src = objectUrl;
       originalVideo.load();
 
+      let lastOriginalTime = 0;
+      let lastProcessedTime = 0;
+      let frameInterval = 0;  // Интервал времени между кадрами
+
       originalVideo.addEventListener("play", () => {
         requestAnimationFrame(function drawOriginal() {
           if (!originalVideo.paused && !originalVideo.ended) {
-            originalCtx.drawImage(originalVideo, 0, 0, originalCanvas.width, originalCanvas.height);
+            const currentTime = originalVideo.currentTime * 1000;  // Текущее время оригинального видео в миллисекундах
+
+            if (currentTime - lastOriginalTime >= frameInterval) {
+              originalCtx.drawImage(originalVideo, 0, 0, originalCanvas.width, originalCanvas.height);
+              lastOriginalTime = currentTime;
+            }
+
             requestAnimationFrame(drawOriginal);
           }
         });
@@ -147,9 +157,26 @@
         const blob = event.data;
         const img = new Image();
         img.onload = () => {
-          processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
-          processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
-          URL.revokeObjectURL(img.src);
+          const currentProcessedTime = Date.now();
+
+          // Синхронизация с оригинальным видео
+          const delay = currentProcessedTime - lastProcessedTime;
+          const expectedDelay = (frameInterval) - delay;
+
+          if (expectedDelay > 0) {
+            setTimeout(() => {
+              processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+              processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
+              lastProcessedTime = Date.now();
+              URL.revokeObjectURL(img.src);
+            }, expectedDelay);
+          } else {
+            // Если задержка меньше, чем ожидаемая, просто показываем кадр
+            processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
+            processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
+            lastProcessedTime = Date.now();
+            URL.revokeObjectURL(img.src);
+          }
         };
         img.src = URL.createObjectURL(blob);
       };

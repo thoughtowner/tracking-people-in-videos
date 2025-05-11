@@ -41,9 +41,9 @@ def process_video(input_path, output_path):
 #     cap.release()
 #     logging.info("Обработка видео завершена")
 
+
 async def process_video_live(input_path, websocket, fps, client_id):
     from .main import clients
-
     cap = cv2.VideoCapture(input_path)
     frame_idx = 1
     client = clients[client_id]
@@ -57,14 +57,19 @@ async def process_video_live(input_path, websocket, fps, client_id):
         if not ret:
             break
 
-        # delay = random.uniform(0.1, 0.5)
-        # await asyncio.sleep(delay)
+        delay = random.uniform(0.1, 0.5)
+        time.sleep(delay)
 
+        # Получаем текущее время кадра
+        timestamp = frame_idx / fps
+
+        # Кодируем кадр в формат JPEG
         _, jpeg = cv2.imencode(".jpg", frame)
         if not _:
             logger.info("Ошибка кодирования кадра!")
             continue
 
+        # Отправляем кадр через WebSocket
         try:
             await websocket.send_bytes(jpeg.tobytes())
         except Exception as e:
@@ -72,6 +77,8 @@ async def process_video_live(input_path, websocket, fps, client_id):
             break
 
         frame_idx += 1
+        # Задержка для синхронизации с оригинальным видео
+        await asyncio.sleep(1 / fps)  # Задержка на время одного кадра для поддержания fps
 
     cap.release()
     logger.info("Обработка видео завершена.")
