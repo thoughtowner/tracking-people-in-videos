@@ -9,7 +9,6 @@
     #controls, #syncMode, #downloadMode { margin-top: 20px; }
     canvas { border: 1px solid black; margin: 10px; }
     .row { display: flex; justify-content: center; gap: 20px; }
-    .hidden { display: none; }
   </style>
 </head>
 <body>
@@ -18,15 +17,13 @@
 
   <div id="controls">
     <input type="file" id="fileInput" accept="video/mp4">
-    <button onclick="uploadVideo()">Загрузить видео</button>
+    <button id="uploadButton">Загрузить видео</button>
     <div id="status" style="color: darkred;"></div>
   </div>
 
   <p id="modeText" style="display:none;">Выберите режим:</p>
-  <button onclick="selectMode('sync')" id="syncButton" style="display:none;">Воспроизведение в реальном времени</button>
-  <button onclick="selectMode('download')" id="downloadButton" style="display:none;">Скачать обработанное видео</button>
-
-  <button id="sync_play_button" class="hidden">Переключить режим воспроизведения</button>
+  <button id="syncButton" style="display:none;">Воспроизведение в реальном времени</button>
+  <button id="downloadButton" style="display:none;">Скачать обработанное видео</button>
 
   <div id="syncMode" style="display:none;">
     <div class="row">
@@ -50,10 +47,11 @@
   </div>
 
   <script>
-    let mode = null;
-    let ws = null;
-    let videoId = null;
-    let uploadedVideo = null;
+    let videoId = null, uploadedVideo = null, ws = null;
+
+    document.getElementById("uploadButton").onclick = uploadVideo;
+    document.getElementById("syncButton").onclick   = () => selectMode("sync");
+    document.getElementById("downloadButton").onclick = () => selectMode("download");
 
     function showModeButtons() {
       document.getElementById("modeText").style.display = "block";
@@ -61,157 +59,97 @@
       document.getElementById("downloadButton").style.display = "inline-block";
     }
 
-    function selectMode(selected) {
-      mode = selected;
-      document.getElementById("syncMode").style.display = selected === "sync" ? "block" : "none";
-      document.getElementById("downloadMode").style.display = selected === "download" ? "block" : "none";
-
-      if (uploadedVideo) {
-        if (selected === "download") {
-          document.getElementById("downloadText").style.display = "block";
-          document.getElementById("downloadLink").style.display = "block";
-          document.getElementById("downloadLink").href = `/video?video_id=${videoId}`;
-          document.getElementById("detectionsText").style.display = "block";
-          document.getElementById("detectionsLink").style.display = "block";
-          document.getElementById("detectionsLink").href = `/detections?video_id=${videoId}`;
-        } else if (selected === "sync") {
-          playSync(uploadedVideo, videoId);
-        }
-      }
-    }
-
     async function uploadVideo() {
-      const fileInput = document.getElementById("fileInput");
-      const file = fileInput.files[0];
-      if (!file) {
-        alert("Выберите видеофайл.");
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("video", file);
-
-      const status = document.getElementById("status");
-      status.textContent = "Загрузка и обработка...";
-
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) return alert("Выберите видеофайл.");
+      const fd = new FormData(); fd.append("video", file);
+      document.getElementById("status").textContent = "Загрузка...";
       try {
-        const response = await fetch("/track", {
-          method: "POST",
-          body: formData
-        });
-        const data = await response.json();
+        const res = await fetch("/upload", { method: "POST", body: fd });
+        const data = await res.json();
         videoId = data.video_id;
         uploadedVideo = file;
-
-        status.textContent = "Видео загружено и обработано.";
-
+        document.getElementById("status").textContent = "Видео загружено.";
         showModeButtons();
-      } catch (err) {
-        status.textContent = "Ошибка загрузки или обработки: " + err.message;
+      } catch(e) {
+        document.getElementById("status").textContent = "Ошибка: "+e.message;
       }
     }
 
-    function playSync(file, videoId) {
-      const originalVideo = document.getElementById("originalVideo");
-      const originalCanvas = document.getElementById("originalCanvas");
-      const processedCanvas = document.getElementById("processedCanvas");
-      const originalCtx = originalCanvas.getContext("2d");
-      const processedCtx = processedCanvas.getContext("2d");
+    async function selectMode(mode) {
+      document.getElementById("syncMode").style.display    = mode==="sync"     ? "block":"none";
+      document.getElementById("downloadMode").style.display = mode==="download" ? "block":"none";
 
-      const objectUrl = URL.createObjectURL(file);
-      originalVideo.src = objectUrl;
-      originalVideo.load();
+      if (!videoId) return;
+      if (mode==="sync") playSync();
+      else await processAndShowLinks();
+    }
 
-      let lastOriginalTime = 0;
-      let lastProcessedTime = 0;
-      let frameInterval = 0;
+    async function processAndShowLinks() {
+      const txt = document.getElementById("downloadText");
+      txt.style.display = "block";
+      txt.textContent   = "Обработка видео...";
+      try {
+        await fetch(`/process/${videoId}`, {method:"POST"});
+        txt.textContent = "Готово!";
+        const dl = document.getElementById("downloadLink");
+        dl.style.display = "inline-block";
+        dl.href = `/video/${videoId}`;
+        const dt = document.getElementById("detectionsText");
+        dt.style.display = "block";
+        const det = document.getElementById("detectionsLink");
+        det.style.display = "inline-block";
+        det.href = `/detections/${videoId}`;
+      } catch(e) {
+        txt.textContent = "Ошибка: "+e.message;
+      }
+    }
 
-      originalVideo.addEventListener("play", () => {
-        requestAnimationFrame(function drawOriginal() {
-          if (!originalVideo.paused && !originalVideo.ended) {
-            const currentTime = originalVideo.currentTime * 1000;
+    function playSync() {
+      const origV = document.getElementById("originalVideo");
+      const origC = document.getElementById("originalCanvas");
+      const procC = document.getElementById("processedCanvas");
+      const oCtx = origC.getContext("2d");
+      const pCtx = procC.getContext("2d");
 
-            if (currentTime - lastOriginalTime >= frameInterval) {
-              originalCtx.drawImage(originalVideo, 0, 0, originalCanvas.width, originalCanvas.height);
-              lastOriginalTime = currentTime;
-            }
+      origV.src = URL.createObjectURL(uploadedVideo);
+      origV.load();
 
-            requestAnimationFrame(drawOriginal);
-          }
-        });
+      origV.addEventListener("play", function loopOrig() {
+        if (!origV.paused && !origV.ended) {
+          oCtx.drawImage(origV, 0,0,origC.width,origC.height);
+          requestAnimationFrame(loopOrig);
+        }
       });
+
+      const fps = 30;
+      const interval = 1000/fps;
+      let latestBlob = null;
 
       ws = new WebSocket(`ws://${window.location.host}/ws/${videoId}`);
       ws.binaryType = "blob";
+      ws.onopen = ()=> ws.send("start");
+      ws.onmessage = e => { latestBlob = e.data; };
 
-      let firstFrameProcessed = false;
-
-      ws.onmessage = (event) => {
-        const blob = event.data;
+      let firstPlay = false;
+      setInterval(() => {
+        if (!latestBlob) return;
         const img = new Image();
         img.onload = () => {
-          const currentProcessedTime = Date.now();
-
-          const delay = currentProcessedTime - lastProcessedTime;
-          const expectedDelay = frameInterval - delay;
-
-          if (expectedDelay > 0) {
-            setTimeout(() => {
-              processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
-              processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
-              lastProcessedTime = Date.now();
-              URL.revokeObjectURL(img.src);
-
-              if (!firstFrameProcessed) {
-                originalVideo.play();
-                firstFrameProcessed = true;
-              }
-            }, expectedDelay);
-          } else {
-            processedCtx.clearRect(0, 0, processedCanvas.width, processedCanvas.height);
-            processedCtx.drawImage(img, 0, 0, processedCanvas.width, processedCanvas.height);
-            lastProcessedTime = Date.now();
-            URL.revokeObjectURL(img.src);
-
-            if (!firstFrameProcessed) {
-              originalVideo.play();
-              firstFrameProcessed = true;
-            }
-          }
+          pCtx.clearRect(0,0,procC.width,procC.height);
+          pCtx.drawImage(img,0,0,procC.width,procC.height);
+          if (!firstPlay) { origV.play(); firstPlay = true; }
+          URL.revokeObjectURL(img.src);
         };
-        img.src = URL.createObjectURL(blob);
-      };
+        img.src = URL.createObjectURL(latestBlob);
+        latestBlob = null;
+      }, interval);
 
-      ws.onopen = () => {
-        ws.send("start");
+      ws.onerror = ()=>{
+        document.getElementById("status").textContent = "Ошибка WebSocket";
       };
-
-      ws.onerror = (error) => {
-        console.error("Ошибка WebSocket: ", error);
-        document.getElementById("status").textContent = "Ошибка WebSocket-соединения.";
-      };
-
-      ws.onclose = () => {
-        console.log("WebSocket закрыт.");
-      };
+      ws.onclose = ()=> console.log("WS closed");
     }
-
-    document.getElementById("sync_play_button").addEventListener("click", function() {
-      fetch("/toggle_playing_mode", {
-        method: "POST",
-        body: JSON.stringify({ client_id: videoId, mode: "sync" }),
-        headers: { "Content-Type": "application/json" }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.status === "success") {
-          console.log("Режим воспроизведения изменен");
-        } else {
-          console.error("Ошибка изменения режима воспроизведения");
-        }
-      })
-      .catch(error => console.error("Ошибка сети:", error));
-    });
   </script>
 
 </body>
