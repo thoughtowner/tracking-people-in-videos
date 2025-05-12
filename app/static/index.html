@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Видео обработка</title>
+  <title>Обнаружение людей на видео</title>
   <style>
     body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
     button, input[type="file"] { margin: 10px 0; }
@@ -14,7 +14,7 @@
 </head>
 <body>
 
-  <h1>Обработка видео</h1>
+  <h1>Обнаружение людей на видео</h1>
 
   <div id="controls">
     <input type="file" id="fileInput" accept="video/mp4">
@@ -23,13 +23,12 @@
   </div>
 
   <p id="modeText" style="display:none;">Выберите режим:</p>
-  <button onclick="selectMode('sync')" id="syncButton" style="display:none;">Синхронное воспроизведение</button>
-  <button onclick="selectMode('download')" id="downloadButton" style="display:none;">Только получить видео</button>
+  <button onclick="selectMode('sync')" id="syncButton" style="display:none;">Воспроизведение в реальном времени</button>
+  <button onclick="selectMode('download')" id="downloadButton" style="display:none;">Скачать обработанное видео</button>
 
   <button id="sync_play_button" class="hidden">Переключить режим воспроизведения</button>
 
   <div id="syncMode" style="display:none;">
-    <h2>Синхронное воспроизведение</h2>
     <div class="row">
       <div>
         <p>Оригинальное видео</p>
@@ -46,7 +45,7 @@
   <div id="downloadMode" style="display:none;">
     <p id="downloadText" style="display:none;">Ссылка для скачивания появится после обработки видео:</p>
     <a id="downloadLink" href="#" download="processed_video.mp4" style="display:none;">Скачать обработанное видео</a>
-    <p id="detectionsText" style="display:none;">Ссылка на результаты (JSON):</p>
+    <p id="detectionsText" style="display:none;">Ссылка на координаты:</p>
     <a id="detectionsLink" href="#" target="_blank" style="display:none;">Смотреть координаты обнаруженных объектов</a>
   </div>
 
@@ -163,7 +162,6 @@
               lastProcessedTime = Date.now();
               URL.revokeObjectURL(img.src);
 
-              // Запуск оригинального видео только после первого кадра обработанного видео
               if (!firstFrameProcessed) {
                 originalVideo.play();
                 firstFrameProcessed = true;
@@ -175,7 +173,6 @@
             lastProcessedTime = Date.now();
             URL.revokeObjectURL(img.src);
 
-            // Запуск оригинального видео только после первого кадра обработанного видео
             if (!firstFrameProcessed) {
               originalVideo.play();
               firstFrameProcessed = true;
