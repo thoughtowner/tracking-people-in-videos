@@ -4,6 +4,7 @@ import numpy as np
 from deep_sort_realtime.deepsort_tracker import DeepSort
 from ultralytics import YOLO
 import time
+import asyncio
 
 import logging.config
 from .logger import LOGGING_CONFIG, logger
@@ -152,12 +153,22 @@ def process_video(input_path: str, output_path: str):
 async def process_video_live(input_path, websocket, fps, client_id):
     from .main import clients
 
+    model = YOLO('yolov8s.pt')
+
+    tracker = DeepSort(max_age=10)
+
     cap = cv2.VideoCapture(input_path)
     frame_idx = 1
     client = clients[client_id]
 
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
     last_frame_time = time.time()
     frame_interval = 1 / fps
+
+    object_paths = {}
+    object_detection_frames = {}
+    tracking_results = []
 
     while cap.isOpened():
         if not client["playing_synchronized"]:
@@ -189,9 +200,9 @@ async def process_video_live(input_path, websocket, fps, client_id):
             center_y = int((t + h) / 2)
 
             if track_id not in object_detection_frames:
-                object_detection_frames[track_id] = frame_count
+                object_detection_frames[track_id] = frame_idx
 
-            frames_since_first = frame_count - object_detection_frames[track_id]
+            frames_since_first = frame_idx - object_detection_frames[track_id]
             phase = frames_since_first // BLINK_FRAME_PER_COLOR
 
             if phase < BLINK_PHASES * 2:
@@ -220,7 +231,7 @@ async def process_video_live(input_path, websocket, fps, client_id):
             cv2.rectangle(frame, (int(l), int(t)), (int(w), int(h)), MAIN_COLOR, 2)
             cv2.putText(frame, f'ID: {track_id}', (int(l), int(t - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, MAIN_COLOR, 2)
 
-        logger.info(f'Обработано {frame_count} (из {total_frames}) кадров')
+        logger.info(f'Обработано {frame_idx} (из {total_frames}) кадров')
 
         # delay = random.uniform(1, 2)
         # await asyncio.sleep(delay)
